@@ -14,20 +14,29 @@ import (
 //    xlsx := NewFile()
 //
 func NewFile() *File {
-	file := make(map[string]string)
-	file["_rels/.rels"] = XMLHeader + templateRels
-	file["docProps/app.xml"] = XMLHeader + templateDocpropsApp
-	file["docProps/core.xml"] = XMLHeader + templateDocpropsCore
-	file["xl/_rels/workbook.xml.rels"] = XMLHeader + templateWorkbookRels
-	file["xl/theme/theme1.xml"] = XMLHeader + templateTheme
-	file["xl/worksheets/sheet1.xml"] = XMLHeader + templateSheet
-	file["xl/styles.xml"] = XMLHeader + templateStyles
-	file["xl/workbook.xml"] = XMLHeader + templateWorkbook
-	file["[Content_Types].xml"] = XMLHeader + templateContentTypes
-	return &File{
-		Sheet: make(map[string]*xlsxWorksheet),
-		XLSX:  file,
+	file := make(map[string][]byte)
+	file["_rels/.rels"] = []byte(XMLHeader + templateRels)
+	file["docProps/app.xml"] = []byte(XMLHeader + templateDocpropsApp)
+	file["docProps/core.xml"] = []byte(XMLHeader + templateDocpropsCore)
+	file["xl/_rels/workbook.xml.rels"] = []byte(XMLHeader + templateWorkbookRels)
+	file["xl/theme/theme1.xml"] = []byte(XMLHeader + templateTheme)
+	file["xl/worksheets/sheet1.xml"] = []byte(XMLHeader + templateSheet)
+	file["xl/styles.xml"] = []byte(XMLHeader + templateStyles)
+	file["xl/workbook.xml"] = []byte(XMLHeader + templateWorkbook)
+	file["[Content_Types].xml"] = []byte(XMLHeader + templateContentTypes)
+	f := &File{
+		sheetMap:   make(map[string]string),
+		Sheet:      make(map[string]*xlsxWorksheet),
+		SheetCount: 1,
+		XLSX:       file,
 	}
+	f.ContentTypes = f.contentTypesReader()
+	f.Styles = f.stylesReader()
+	f.WorkBook = f.workbookReader()
+	f.WorkBookRels = f.workbookRelsReader()
+	f.Sheet["xl/worksheets/sheet1.xml"] = f.workSheetReader("Sheet1")
+	f.sheetMap["Sheet1"] = "xl/worksheets/sheet1.xml"
+	return f
 }
 
 // Save provides function to override the xlsx file with origin path.
