@@ -14,6 +14,7 @@ import (
 // File define a populated XLSX file struct.
 type File struct {
 	checked       map[string]bool
+	sheetMap      map[string]string
 	ContentTypes  *xlsxTypes
 	Path          string
 	SharedStrings *xlsxSST
@@ -22,7 +23,7 @@ type File struct {
 	Styles        *xlsxStyleSheet
 	WorkBook      *xlsxWorkbook
 	WorkBookRels  *xlsxWorkbookRels
-	XLSX          map[string]string
+	XLSX          map[string][]byte
 }
 
 // OpenFile take the name of an XLSX file and returns a populated XLSX file
@@ -57,30 +58,37 @@ func OpenReader(r io.Reader) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &File{
+	f := &File{
 		checked:    make(map[string]bool),
 		Sheet:      make(map[string]*xlsxWorksheet),
 		SheetCount: sheetCount,
 		XLSX:       file,
-	}, nil
+	}
+	f.sheetMap = f.getSheetMap()
+	f.Styles = f.stylesReader()
+	return f, nil
 }
 
 // setDefaultTimeStyle provides function to set default numbers format for
-// time.Time type cell value by given worksheet name and cell coordinates.
-func (f *File) setDefaultTimeStyle(sheet, axis string) {
+// time.Time type cell value by given worksheet name, cell coordinates and
+// number format code.
+func (f *File) setDefaultTimeStyle(sheet, axis string, format int) {
 	if f.GetCellStyle(sheet, axis) == 0 {
-		style, _ := f.NewStyle(`{"number_format": 22}`)
+		style, _ := f.NewStyle(`{"number_format": ` + strconv.Itoa(format) + `}`)
 		f.SetCellStyle(sheet, axis, axis, style)
 	}
 }
 
 // workSheetReader provides function to get the pointer to the structure after
-// deserialization by given worksheet index.
+// deserialization by given worksheet name.
 func (f *File) workSheetReader(sheet string) *xlsxWorksheet {
-	name := "xl/worksheets/" + strings.ToLower(sheet) + ".xml"
+	name, ok := f.sheetMap[trimSheetName(sheet)]
+	if !ok {
+		name = "xl/worksheets/" + strings.ToLower(sheet) + ".xml"
+	}
 	if f.Sheet[name] == nil {
 		var xlsx xlsxWorksheet
-		xml.Unmarshal([]byte(f.readXML(name)), &xlsx)
+		xml.Unmarshal(f.readXML(name), &xlsx)
 		if f.checked == nil {
 			f.checked = make(map[string]bool)
 		}
@@ -107,29 +115,29 @@ func checkSheet(xlsx *xlsxWorksheet) {
 	}
 	sheetData := xlsxSheetData{}
 	existsRows := map[int]int{}
-	for k, v := range xlsx.SheetData.Row {
-		existsRows[v.R] = k
+	for k := range xlsx.SheetData.Row {
+		existsRows[xlsx.SheetData.Row[k].R] = k
 	}
 	for i := 0; i < row; i++ {
 		_, ok := existsRows[i+1]
 		if ok {
 			sheetData.Row = append(sheetData.Row, xlsx.SheetData.Row[existsRows[i+1]])
-			continue
+		} else {
+			sheetData.Row = append(sheetData.Row, &xlsxRow{
+				R: i + 1,
+			})
 		}
-		sheetData.Row = append(sheetData.Row, &xlsxRow{
-			R: i + 1,
-		})
 	}
 	xlsx.SheetData = sheetData
 }
 
-// replaceWorkSheetsRelationshipsNameSpace provides function to replace
+// replaceWorkSheetsRelationshipsNameSpaceBytes provides function to replace
 // xl/worksheets/sheet%d.xml XML tags to self-closing for compatible Microsoft
 // Office Excel 2007.
-func replaceWorkSheetsRelationshipsNameSpace(workbookMarshal string) string {
-	oldXmlns := `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
-	newXmlns := `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mx="http://schemas.microsoft.com/office/mac/excel/2008/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main">`
-	workbookMarshal = strings.Replace(workbookMarshal, oldXmlns, newXmlns, -1)
+func replaceWorkSheetsRelationshipsNameSpaceBytes(workbookMarshal []byte) []byte {
+	var oldXmlns = []byte(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
+	var newXmlns = []byte(`<worksheet xr:uid="{00000000-0001-0000-0000-000000000000}" xmlns:xr3="http://schemas.microsoft.com/office/spreadsheetml/2016/revision3" xmlns:xr2="http://schemas.microsoft.com/office/spreadsheetml/2015/revision2" xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" mc:Ignorable="x14ac xr xr2 xr3" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mx="http://schemas.microsoft.com/office/mac/excel/2008/main" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`)
+	workbookMarshal = bytes.Replace(workbookMarshal, oldXmlns, newXmlns, -1)
 	return workbookMarshal
 }
 
@@ -159,10 +167,10 @@ func replaceWorkSheetsRelationshipsNameSpace(workbookMarshal string) string {
 //    </row>
 //
 func (f *File) UpdateLinkedValue() {
-	for i := 1; i <= f.SheetCount; i++ {
-		xlsx := f.workSheetReader("sheet" + strconv.Itoa(i))
-		for indexR, row := range xlsx.SheetData.Row {
-			for indexC, col := range row.C {
+	for _, name := range f.GetSheetMap() {
+		xlsx := f.workSheetReader(name)
+		for indexR := range xlsx.SheetData.Row {
+			for indexC, col := range xlsx.SheetData.Row[indexR].C {
 				if col.F != nil && col.V != "" {
 					xlsx.SheetData.Row[indexR].C[indexC].V = ""
 					xlsx.SheetData.Row[indexR].C[indexC].T = ""
@@ -176,7 +184,7 @@ func (f *File) UpdateLinkedValue() {
 // hyperlinks, merged cells and auto filter when inserting or deleting rows or
 // columns.
 //
-// sheet: Worksheet index that we're editing
+// sheet: Worksheet name that we're editing
 // column: Index number of the column we're inserting/deleting before
 // row: Index number of the row we're inserting/deleting before
 // offset: Number of rows/column to insert/delete negative values indicate deletion
@@ -217,16 +225,15 @@ func (f *File) adjustRowDimensions(xlsx *xlsxWorksheet, rowIndex, offset int) {
 		return
 	}
 	for i, r := range xlsx.SheetData.Row {
-		if r.R < rowIndex {
-			continue
-		}
-		xlsx.SheetData.Row[i].R += offset
-		for k, v := range xlsx.SheetData.Row[i].C {
-			axis := v.R
-			col := string(strings.Map(letterOnlyMapF, axis))
-			row, _ := strconv.Atoi(strings.Map(intOnlyMapF, axis))
-			xAxis := row + offset
-			xlsx.SheetData.Row[i].C[k].R = col + strconv.Itoa(xAxis)
+		if r.R >= rowIndex {
+			xlsx.SheetData.Row[i].R += offset
+			for k, v := range xlsx.SheetData.Row[i].C {
+				axis := v.R
+				col := string(strings.Map(letterOnlyMapF, axis))
+				row, _ := strconv.Atoi(strings.Map(intOnlyMapF, axis))
+				xAxis := row + offset
+				xlsx.SheetData.Row[i].C[k].R = col + strconv.Itoa(xAxis)
+			}
 		}
 	}
 }

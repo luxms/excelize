@@ -118,13 +118,14 @@ type xlsxPageMargins struct {
 // specifies the sheet formatting properties.
 type xlsxSheetFormatPr struct {
 	BaseColWidth     uint8   `xml:"baseColWidth,attr,omitempty"`
-	CustomHeight     float64 `xml:"customHeight,attr,omitempty"`
 	DefaultColWidth  float64 `xml:"defaultColWidth,attr,omitempty"`
 	DefaultRowHeight float64 `xml:"defaultRowHeight,attr"`
+	CustomHeight     bool    `xml:"customHeight,attr,omitempty"`
+	ZeroHeight       bool    `xml:"zeroHeight,attr,omitempty"`
 	ThickTop         bool    `xml:"thickTop,attr,omitempty"`
-	OutlineLevelCol  uint8   `xml:"outlineLevelCol,attr,omitempty"`
+	ThickBottom      bool    `xml:"thickBottom,attr,omitempty"`
 	OutlineLevelRow  uint8   `xml:"outlineLevelRow,attr,omitempty"`
-	ZeroHeight       float64 `xml:"zeroHeight,attr,omitempty"`
+	OutlineLevelCol  uint8   `xml:"outlineLevelCol,attr,omitempty"`
 }
 
 // xlsxSheetViews directly maps the sheetViews element in the namespace
@@ -144,17 +145,18 @@ type xlsxSheetViews struct {
 // last sheetView definition is loaded, and the others are discarded. When
 // multiple windows are viewing the same sheet, multiple sheetView elements
 // (with corresponding workbookView entries) are saved.
+// See https://msdn.microsoft.com/en-us/library/office/documentformat.openxml.spreadsheet.sheetview.aspx
 type xlsxSheetView struct {
 	WindowProtection         bool             `xml:"windowProtection,attr,omitempty"`
 	ShowFormulas             bool             `xml:"showFormulas,attr,omitempty"`
-	ShowGridLines            string           `xml:"showGridLines,attr,omitempty"`
-	ShowRowColHeaders        bool             `xml:"showRowColHeaders,attr,omitempty"`
+	ShowGridLines            *bool            `xml:"showGridLines,attr"`
+	ShowRowColHeaders        *bool            `xml:"showRowColHeaders,attr"`
 	ShowZeros                bool             `xml:"showZeros,attr,omitempty"`
 	RightToLeft              bool             `xml:"rightToLeft,attr,omitempty"`
 	TabSelected              bool             `xml:"tabSelected,attr,omitempty"`
 	ShowWhiteSpace           *bool            `xml:"showWhiteSpace,attr"`
 	ShowOutlineSymbols       bool             `xml:"showOutlineSymbols,attr,omitempty"`
-	DefaultGridColor         bool             `xml:"defaultGridColor,attr"`
+	DefaultGridColor         *bool            `xml:"defaultGridColor,attr"`
 	View                     string           `xml:"view,attr,omitempty"`
 	TopLeftCell              string           `xml:"topLeftCell,attr,omitempty"`
 	ColorID                  int              `xml:"colorId,attr,omitempty"`
@@ -194,7 +196,7 @@ type xlsxSheetPr struct {
 	CodeName                          string           `xml:"codeName,attr,omitempty"`
 	EnableFormatConditionsCalculation *bool            `xml:"enableFormatConditionsCalculation,attr"`
 	FilterMode                        bool             `xml:"filterMode,attr,omitempty"`
-	Published                         bool             `xml:"published,attr,omitempty"`
+	Published                         *bool            `xml:"published,attr"`
 	SyncHorizontal                    bool             `xml:"syncHorizontal,attr,omitempty"`
 	SyncVertical                      bool             `xml:"syncVertical,attr,omitempty"`
 	TransitionEntry                   bool             `xml:"transitionEntry,attr,omitempty"`
@@ -254,7 +256,7 @@ type xlsxDimension struct {
 // http://schemas.openxmlformats.org/spreadsheetml/2006/main - currently I have
 // not checked it for completeness - it does as much as I need.
 type xlsxSheetData struct {
-	XMLName xml.Name  `xml:"sheetData"`
+	XMLName xml.Name   `xml:"sheetData"`
 	Row     []*xlsxRow `xml:"row"`
 }
 
@@ -262,18 +264,18 @@ type xlsxSheetData struct {
 // about an entire row of a worksheet, and contains all cell definitions for a
 // particular row in the worksheet.
 type xlsxRow struct {
-	Collapsed    bool    `xml:"collapsed,attr,omitempty"`
-	CustomFormat bool    `xml:"customFormat,attr,omitempty"`
-	CustomHeight bool    `xml:"customHeight,attr,omitempty"`
-	Hidden       bool    `xml:"hidden,attr,omitempty"`
-	Ht           float64 `xml:"ht,attr,omitempty"`
-	OutlineLevel uint8   `xml:"outlineLevel,attr,omitempty"`
-	Ph           bool    `xml:"ph,attr,omitempty"`
-	R            int     `xml:"r,attr,omitempty"`
-	S            int     `xml:"s,attr,omitempty"`
-	Spans        string  `xml:"spans,attr,omitempty"`
-	ThickBot     bool    `xml:"thickBot,attr,omitempty"`
-	ThickTop     bool    `xml:"thickTop,attr,omitempty"`
+	Collapsed    bool     `xml:"collapsed,attr,omitempty"`
+	CustomFormat bool     `xml:"customFormat,attr,omitempty"`
+	CustomHeight bool     `xml:"customHeight,attr,omitempty"`
+	Hidden       bool     `xml:"hidden,attr,omitempty"`
+	Ht           float64  `xml:"ht,attr,omitempty"`
+	OutlineLevel uint8    `xml:"outlineLevel,attr,omitempty"`
+	Ph           bool     `xml:"ph,attr,omitempty"`
+	R            int      `xml:"r,attr,omitempty"`
+	S            int      `xml:"s,attr,omitempty"`
+	Spans        string   `xml:"spans,attr,omitempty"`
+	ThickBot     bool     `xml:"thickBot,attr,omitempty"`
+	ThickTop     bool     `xml:"thickTop,attr,omitempty"`
 	C            []*xlsxC `xml:"c"`
 }
 
@@ -302,6 +304,19 @@ type xlsxDataValidations struct {
 // xlsxC directly maps the c element in the namespace
 // http://schemas.openxmlformats.org/spreadsheetml/2006/main - currently I have
 // not checked it for completeness - it does as much as I need.
+//
+// This simple type is restricted to the values listed in the following table:
+//
+//      Enumeration Value         | Description
+//     ---------------------------+---------------------------------
+//      b (Boolean)               | Cell containing a boolean.
+//      d (Date)                  | Cell contains a date in the ISO 8601 format.
+//      e (Error)                 | Cell containing an error.
+//      inlineStr (Inline String) | Cell containing an (inline) rich string, i.e., one not in the shared string table. If this cell type is used, then the cell value is in the is element rather than the v element in the cell (c element).
+//      n (Number)                | Cell containing a number.
+//      s (Shared String)         | Cell containing a shared string.
+//      str (String)              | Cell containing a formula string.
+//
 type xlsxC struct {
 	R string `xml:"r,attr"`           // Cell ID, e.g. A1
 	S int    `xml:"s,attr,omitempty"` // Style reference.
@@ -309,7 +324,16 @@ type xlsxC struct {
 	T        string   `xml:"t,attr,omitempty"` // Type.
 	F        *xlsxF   `xml:"f,omitempty"`      // Formula
 	V        string   `xml:"v,omitempty"`      // Value
+	IS       *xlsxIS  `xml:"is"`
 	XMLSpace xml.Attr `xml:"space,attr,omitempty"`
+}
+
+// xlsxIS directly maps the t element. Cell containing an (inline) rich
+// string, i.e., one not in the shared string table. If this cell type is
+// used, then the cell value is in the is element rather than the v element in
+// the cell (c element).
+type xlsxIS struct {
+	T string `xml:"t"`
 }
 
 // xlsxF directly maps the f element in the namespace
@@ -356,7 +380,7 @@ type xlsxSheetProtection struct {
 // properties specify how to display that phonetic run.
 type xlsxPhoneticPr struct {
 	Alignment string `xml:"alignment,attr,omitempty"`
-	FontID    int    `xml:"fontId,attr,omitempty"`
+	FontID    *int   `xml:"fontId,attr"`
 	Type      string `xml:"type,attr,omitempty"`
 }
 

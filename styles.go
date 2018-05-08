@@ -793,7 +793,7 @@ var validType = map[string]string{
 	"2_color_scale": "2_color_scale",
 	"3_color_scale": "3_color_scale",
 	"data_bar":      "dataBar",
-	"formula":       "expression", // Doesn't support currently
+	"formula":       "expression",
 }
 
 // criteriaType defined the list of valid criteria types.
@@ -925,6 +925,7 @@ func formatToE(i int, v string) string {
 // March, or the 'd' in Tuesday) below. First we convert them to arbitrary
 // characters unused in Excel Date formats, and then at the end, turn them to
 // what they should actually be.
+// Based off: http://www.ozgrid.com/Excel/CustomFormats.htm
 func parseTime(i int, v string) string {
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
@@ -943,8 +944,6 @@ func parseTime(i int, v string) string {
 		{"mmm", "Jan"},
 		{"mmss", "0405"},
 		{"ss", "05"},
-		{"hh", "15"},
-		{"h", "3"},
 		{"mm:", "04:"},
 		{":mm", ":04"},
 		{"mm", "01"},
@@ -953,6 +952,15 @@ func parseTime(i int, v string) string {
 		{"%%%%", "January"},
 		{"&&&&", "Monday"},
 	}
+	// It is the presence of the "am/pm" indicator that determines if this is
+	// a 12 hour or 24 hours time format, not the number of 'h' characters.
+	if is12HourTime(format) {
+		format = strings.Replace(format, "hh", "03", 1)
+		format = strings.Replace(format, "h", "3", 1)
+	} else {
+		format = strings.Replace(format, "hh", "15", 1)
+		format = strings.Replace(format, "h", "15", 1)
+	}
 	for _, repl := range replacements {
 		format = strings.Replace(format, repl.xltime, repl.gotime, 1)
 	}
@@ -960,6 +968,7 @@ func parseTime(i int, v string) string {
 	// colon that would remain.
 	if val.Hour() < 1 {
 		format = strings.Replace(format, "]:", "]", 1)
+		format = strings.Replace(format, "[03]", "", 1)
 		format = strings.Replace(format, "[3]", "", 1)
 		format = strings.Replace(format, "[15]", "", 1)
 	} else {
@@ -967,6 +976,11 @@ func parseTime(i int, v string) string {
 		format = strings.Replace(format, "[15]", "15", 1)
 	}
 	return val.Format(format)
+}
+
+// is12HourTime checks whether an Excel time format string is a 12 hours form.
+func is12HourTime(format string) bool {
+	return strings.Contains(format, "am/pm") || strings.Contains(format, "AM/PM") || strings.Contains(format, "a/p") || strings.Contains(format, "A/P")
 }
 
 // stylesReader provides function to get the pointer to the structure after
@@ -985,7 +999,7 @@ func (f *File) stylesReader() *xlsxStyleSheet {
 func (f *File) styleSheetWriter() {
 	if f.Styles != nil {
 		output, _ := xml.Marshal(f.Styles)
-		f.saveFileList("xl/styles.xml", replaceWorkSheetsRelationshipsNameSpace(string(output)))
+		f.saveFileList("xl/styles.xml", replaceWorkSheetsRelationshipsNameSpaceBytes(output))
 	}
 }
 
@@ -1222,13 +1236,13 @@ func parseFormatStyleSet(style string) (*formatStyle, error) {
 //     55    | 4E0A5348/4E0B5348h"65F6"mm"5206
 //     56    | 4E0A5348/4E0B5348h"65F6"mm"5206"ss"79D2
 //     57    | yyyy"5E74"m"6708
-//     58    | m"6708"d"65E5"`,
+//     58    | m"6708"d"65E5"
 //
 // Number format code in ja-jp language:
 //
 //     Index | Symbol
 //    -------+-------------------------------------------
-//     27    | [$-411]ge.m.
+//     27    | [$-411]ge.m.d
 //     28    | [$-411]ggge"年"m"月"d"日
 //     29    | [$-411]ggge"年"m"月"d"日
 //     30    | m/d/y
@@ -1237,18 +1251,18 @@ func parseFormatStyleSet(style string) (*formatStyle, error) {
 //     33    | h"時"mm"分"ss"秒
 //     34    | yyyy"年"m"月
 //     35    | m"月"d"日
-//     36    | [$-411]ge.m.
-//     50    | [$-411]ge.m.
+//     36    | [$-411]ge.m.d
+//     50    | [$-411]ge.m.d
 //     51    | [$-411]ggge"年"m"月"d"日
 //     52    | yyyy"年"m"月
 //     53    | m"月"d"日
 //     54    | [$-411]ggge"年"m"月"d"日
 //     55    | yyyy"年"m"月
 //     56    | m"月"d"日
-//     57    | [$-411]ge.m.
+//     57    | [$-411]ge.m.d
 //     58    | [$-411]ggge"年"m"月"d"日"
 //
-// Number format code in th-th language:
+// Number format code in ko-kr language:
 //
 //     Index | Symbol
 //    -------+-------------------------------------------
@@ -1277,7 +1291,7 @@ func parseFormatStyleSet(style string) (*formatStyle, error) {
 //
 //     Index | Symbol
 //    -------+-------------------------------------------
-//     27    | [$-411]ge.m.
+//     27    | [$-411]ge.m.d
 //     28    | [$-411]ggge"5E74"m"6708"d"65E5
 //     29    | [$-411]ggge"5E74"m"6708"d"65E5
 //     30    | m/d/y
@@ -1286,15 +1300,15 @@ func parseFormatStyleSet(style string) (*formatStyle, error) {
 //     33    | h"6642"mm"5206"ss"79D2
 //     34    | yyyy"5E74"m"6708
 //     35    | m"6708"d"65E5
-//     36    | [$-411]ge.m.
-//     50    | [$-411]ge.m.
+//     36    | [$-411]ge.m.d
+//     50    | [$-411]ge.m.d
 //     51    | [$-411]ggge"5E74"m"6708"d"65E5
 //     52    | yyyy"5E74"m"6708
 //     53    | m"6708"d"65E5
 //     54    | [$-411]ggge"5E74"m"6708"d"65E5
 //     55    | yyyy"5E74"m"6708
 //     56    | m"6708"d"65E5
-//     57    | [$-411]ge.m.
+//     57    | [$-411]ge.m.d
 //     58    | [$-411]ggge"5E74"m"6708"d"65E5"
 //
 // Number format code with unicode values provided for language glyphs where
@@ -1322,7 +1336,7 @@ func parseFormatStyleSet(style string) (*formatStyle, error) {
 //     57    | yyyy"5E74" mm"6708" dd"65E5
 //     58    | mm-dd
 //
-// Number format code in ko-kr language:
+// Number format code in th-th language:
 //
 //     Index | Symbol
 //    -------+-------------------------------------------
@@ -1887,7 +1901,8 @@ func (f *File) NewStyle(style string) (int, error) {
 	fillID = s.Fills.Count - 1
 
 	applyAlignment, alignment := fs.Alignment != nil, setAlignment(fs)
-	cellXfsID = setCellXfs(s, fontID, numFmtID, fillID, borderID, applyAlignment, alignment)
+	applyProtection, protection := fs.Protection != nil, setProtection(fs)
+	cellXfsID = setCellXfs(s, fontID, numFmtID, fillID, borderID, applyAlignment, applyProtection, alignment, protection)
 	return cellXfsID, nil
 }
 
@@ -1923,9 +1938,6 @@ func (f *File) NewConditionalStyle(style string) (int, error) {
 // setFont provides function to add font style by given cell format settings.
 func setFont(formatStyle *formatStyle) *font {
 	fontUnderlineType := map[string]string{"single": "single", "double": "double"}
-	if formatStyle.Font.Family == "" {
-		formatStyle.Font.Family = "Calibri"
-	}
 	if formatStyle.Font.Size < 1 {
 		formatStyle.Font.Size = 11
 	}
@@ -1939,7 +1951,10 @@ func setFont(formatStyle *formatStyle) *font {
 		Color:  &xlsxColor{RGB: getPaletteColor(formatStyle.Font.Color)},
 		Name:   &attrValString{Val: formatStyle.Font.Family},
 		Family: &attrValInt{Val: 2},
-		Scheme: &attrValString{Val: "minor"},
+	}
+	if f.Name.Val == "" {
+		f.Name.Val = "Calibri"
+		f.Scheme = &attrValString{Val: "minor"}
 	}
 	val, ok := fontUnderlineType[formatStyle.Font.Underline]
 	if ok {
@@ -2141,6 +2156,17 @@ func setAlignment(formatStyle *formatStyle) *xlsxAlignment {
 	return &alignment
 }
 
+// setProtection provides function to set protection properties associated
+// with the cell.
+func setProtection(formatStyle *formatStyle) *xlsxProtection {
+	var protection xlsxProtection
+	if formatStyle.Protection != nil {
+		protection.Hidden = formatStyle.Protection.Hidden
+		protection.Locked = formatStyle.Protection.Locked
+	}
+	return &protection
+}
+
 // setBorders provides function to add border elements in the styles.xml by
 // given borders format settings.
 func setBorders(formatStyle *formatStyle) *xlsxBorder {
@@ -2163,32 +2189,31 @@ func setBorders(formatStyle *formatStyle) *xlsxBorder {
 
 	var border xlsxBorder
 	for _, v := range formatStyle.Border {
-		if v.Style > 13 || v.Style < 0 {
-			continue
-		}
-		var color xlsxColor
-		color.RGB = getPaletteColor(v.Color)
-		switch v.Type {
-		case "left":
-			border.Left.Style = styles[v.Style]
-			border.Left.Color = &color
-		case "right":
-			border.Right.Style = styles[v.Style]
-			border.Right.Color = &color
-		case "top":
-			border.Top.Style = styles[v.Style]
-			border.Top.Color = &color
-		case "bottom":
-			border.Bottom.Style = styles[v.Style]
-			border.Bottom.Color = &color
-		case "diagonalUp":
-			border.Diagonal.Style = styles[v.Style]
-			border.Diagonal.Color = &color
-			border.DiagonalUp = true
-		case "diagonalDown":
-			border.Diagonal.Style = styles[v.Style]
-			border.Diagonal.Color = &color
-			border.DiagonalDown = true
+		if 0 <= v.Style && v.Style < 14 {
+			var color xlsxColor
+			color.RGB = getPaletteColor(v.Color)
+			switch v.Type {
+			case "left":
+				border.Left.Style = styles[v.Style]
+				border.Left.Color = &color
+			case "right":
+				border.Right.Style = styles[v.Style]
+				border.Right.Color = &color
+			case "top":
+				border.Top.Style = styles[v.Style]
+				border.Top.Color = &color
+			case "bottom":
+				border.Bottom.Style = styles[v.Style]
+				border.Bottom.Color = &color
+			case "diagonalUp":
+				border.Diagonal.Style = styles[v.Style]
+				border.Diagonal.Color = &color
+				border.DiagonalUp = true
+			case "diagonalDown":
+				border.Diagonal.Style = styles[v.Style]
+				border.Diagonal.Color = &color
+				border.DiagonalDown = true
+			}
 		}
 	}
 	return &border
@@ -2196,7 +2221,7 @@ func setBorders(formatStyle *formatStyle) *xlsxBorder {
 
 // setCellXfs provides function to set describes all of the formatting for a
 // cell.
-func setCellXfs(style *xlsxStyleSheet, fontID, numFmtID, fillID, borderID int, applyAlignment bool, alignment *xlsxAlignment) int {
+func setCellXfs(style *xlsxStyleSheet, fontID, numFmtID, fillID, borderID int, applyAlignment, applyProtection bool, alignment *xlsxAlignment, protection *xlsxProtection) int {
 	var xf xlsxXf
 	xf.FontID = fontID
 	if fontID != 0 {
@@ -2211,6 +2236,10 @@ func setCellXfs(style *xlsxStyleSheet, fontID, numFmtID, fillID, borderID int, a
 	style.CellXfs.Count++
 	xf.Alignment = alignment
 	xf.ApplyAlignment = applyAlignment
+	if applyProtection {
+		xf.ApplyProtection = applyProtection
+		xf.Protection = protection
+	}
 	xfID := 0
 	xf.XfID = &xfID
 	style.CellXfs.Xf = append(style.CellXfs.Xf, xf)
@@ -2218,9 +2247,8 @@ func setCellXfs(style *xlsxStyleSheet, fontID, numFmtID, fillID, borderID int, a
 }
 
 // SetCellStyle provides function to add style attribute for cells by given
-// worksheet sheet index, coordinate area and style ID. Note that diagonalDown
-// and diagonalUp type border should be use same color in the same coordinate
-// area.
+// worksheet name, coordinate area and style ID. Note that diagonalDown and
+// diagonalUp type border should be use same color in the same coordinate area.
 //
 // For example create a borders of cell H9 on Sheet1:
 //
@@ -2274,45 +2302,52 @@ func setCellXfs(style *xlsxStyleSheet, fontID, numFmtID, fillID, borderID int, a
 //    }
 //    xlsx.SetCellStyle("Sheet1", "H9", "H9", style)
 //
+// Hide and lock for cell H9 on Sheet1:
+//
+//    style, err := xlsx.NewStyle(`{"protection":{"hidden":true, "locked":true}}`)
+//    if err != nil {
+//        fmt.Println(err)
+//    }
+//    xlsx.SetCellStyle("Sheet1", "H9", "H9", style)
+//
 func (f *File) SetCellStyle(sheet, hcell, vcell string, styleID int) {
 	hcell = strings.ToUpper(hcell)
 	vcell = strings.ToUpper(vcell)
 
 	// Coordinate conversion, convert C1:B3 to 2,0,1,2.
 	hcol := string(strings.Map(letterOnlyMapF, hcell))
-	hrow, _ := strconv.Atoi(strings.Map(intOnlyMapF, hcell))
+	hrow, err := strconv.Atoi(strings.Map(intOnlyMapF, hcell))
+	if err != nil {
+		return
+	}
 	hyAxis := hrow - 1
 	hxAxis := TitleToNumber(hcol)
 
 	vcol := string(strings.Map(letterOnlyMapF, vcell))
-	vrow, _ := strconv.Atoi(strings.Map(intOnlyMapF, vcell))
+	vrow, err := strconv.Atoi(strings.Map(intOnlyMapF, vcell))
+	if err != nil {
+		return
+	}
 	vyAxis := vrow - 1
 	vxAxis := TitleToNumber(vcol)
 
+	// Correct the coordinate area, such correct C1:B3 to B1:C3.
 	if vxAxis < hxAxis {
-		hcell, vcell = vcell, hcell
 		vxAxis, hxAxis = hxAxis, vxAxis
 	}
 
 	if vyAxis < hyAxis {
-		hcell, vcell = vcell, hcell
 		vyAxis, hyAxis = hyAxis, vyAxis
 	}
-
-	// Correct the coordinate area, such correct C1:B3 to B1:C3.
-	hcell = ToAlphaString(hxAxis) + strconv.Itoa(hyAxis+1)
-	vcell = ToAlphaString(vxAxis) + strconv.Itoa(vyAxis+1)
 
 	xlsx := f.workSheetReader(sheet)
 
 	completeRow(xlsx, vyAxis+1, vxAxis+1)
 	completeCol(xlsx, vyAxis+1, vxAxis+1)
 
-	for r, row := range xlsx.SheetData.Row {
-		for k, c := range row.C {
-			if checkCellInArea(c.R, hcell+":"+vcell) {
-				xlsx.SheetData.Row[r].C[k].S = styleID
-			}
+	for r := hyAxis; r <= vyAxis; r++ {
+		for k := hxAxis; k <= vxAxis; k++ {
+			xlsx.SheetData.Row[r].C[k].S = styleID
 		}
 	}
 }
@@ -2540,6 +2575,7 @@ func (f *File) SetConditionalFormat(sheet, area, formatSet string) {
 		"2_color_scale":   drawCondFmtColorScale,
 		"3_color_scale":   drawCondFmtColorScale,
 		"dataBar":         drawCondFmtDataBar,
+		"expression":      drawConfFmtExp,
 	}
 
 	xlsx := f.workSheetReader(sheet)
@@ -2549,18 +2585,15 @@ func (f *File) SetConditionalFormat(sheet, area, formatSet string) {
 		var ok bool
 		// "type" is a required parameter, check for valid validation types.
 		vt, ok = validType[v.Type]
-		if !ok {
-			continue
-		}
-		// Check for valid criteria types.
-		ct, ok = criteriaType[v.Criteria]
-		if !ok {
-			continue
-		}
-
-		drawfunc, ok := drawContFmtFunc[vt]
 		if ok {
-			cfRule = append(cfRule, drawfunc(p, ct, v))
+			// Check for valid criteria types.
+			ct, ok = criteriaType[v.Criteria]
+			if ok || vt == "expression" {
+				drawfunc, ok := drawContFmtFunc[vt]
+				if ok {
+					cfRule = append(cfRule, drawfunc(p, ct, v))
+				}
+			}
 		}
 	}
 
@@ -2669,6 +2702,17 @@ func drawCondFmtDataBar(p int, ct string, format *formatConditional) *xlsxCfRule
 			Cfvo:  []*xlsxCfvo{{Type: format.MinType}, {Type: format.MaxType}},
 			Color: []*xlsxColor{{RGB: getPaletteColor(format.BarColor)}},
 		},
+	}
+}
+
+// drawConfFmtExp provides function to create conditional formatting rule for
+// expression by given priority, criteria type and format settings.
+func drawConfFmtExp(p int, ct string, format *formatConditional) *xlsxCfRule {
+	return &xlsxCfRule{
+		Priority: p + 1,
+		Type:     validType[format.Type],
+		Formula:  []string{format.Criteria},
+		DxfID:    &format.Format,
 	}
 }
 
