@@ -105,20 +105,20 @@ func (f *File) SetColOutlineLevel(sheet, column string, level uint8) {
 	}
 	if xlsx.Cols == nil {
 		cols := xlsxCols{}
-		cols.Col = append(cols.Col, col)
+		cols.Col = append(cols.Col, &col)
 		xlsx.Cols = &cols
 		return
 	}
 	for v := range xlsx.Cols.Col {
 		if xlsx.Cols.Col[v].Min <= c && c <= xlsx.Cols.Col[v].Max {
-			col = xlsx.Cols.Col[v]
+			col = *(xlsx.Cols.Col[v])
 		}
 	}
 	col.Min = c
 	col.Max = c
 	col.OutlineLevel = level
 	col.CustomWidth = true
-	xlsx.Cols.Col = append(xlsx.Cols.Col, col)
+	xlsx.Cols.Col = append(xlsx.Cols.Col, &col)
 }
 
 // SetColWidth provides function to set the width of a single column or multiple
