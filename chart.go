@@ -194,6 +194,10 @@ var (
 // chart with default value.
 func parseFormatChartSet(formatSet string) *formatChart {
 	format := formatChart{
+		Dimension: formatChartDimension{
+			Width:  480,
+			Height: 290,
+		},
 		Format: formatPicture{
 			FPrintsWithSheet: true,
 			FLocksWithSheet:  false,
@@ -239,7 +243,7 @@ func parseFormatChartSet(formatSet string) *formatChart {
 //        for k, v := range values {
 //            xlsx.SetCellValue("Sheet1", k, v)
 //        }
-//        xlsx.AddChart("Sheet1", "E1", `{"type":"col3DClustered","series":[{"name":"Sheet1!$A$2","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$2:$D$2"},{"name":"Sheet1!$A$3","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$3:$D$3"},{"name":"Sheet1!$A$4","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$4:$D$4"}],"format":{"x_scale":1.0,"y_scale":1.0,"x_offset":15,"y_offset":10,"print_obj":true,"lock_aspect_ratio":false,"locked":false},"legend":{"position":"bottom","show_legend_key":false},"title":{"name":"Fruit 3D Clustered Column Chart"},"plotarea":{"show_bubble_size":true,"show_cat_name":false,"show_leader_lines":false,"show_percent":true,"show_series_name":true,"show_val":true},"show_blanks_as":"zero","x_axis":{"reverse_order":true},"y_axis":{"maximum":7.5,"minimum":0.5}}`)
+//        xlsx.AddChart("Sheet1", "E1", `{"type":"col3DClustered","dimension":{"width":640,"height":480},"series":[{"name":"Sheet1!$A$2","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$2:$D$2"},{"name":"Sheet1!$A$3","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$3:$D$3"},{"name":"Sheet1!$A$4","categories":"Sheet1!$B$1:$D$1","values":"Sheet1!$B$4:$D$4"}],"format":{"x_scale":1.0,"y_scale":1.0,"x_offset":15,"y_offset":10,"print_obj":true,"lock_aspect_ratio":false,"locked":false},"legend":{"position":"bottom","show_legend_key":false},"title":{"name":"Fruit 3D Clustered Column Chart"},"plotarea":{"show_bubble_size":true,"show_cat_name":false,"show_leader_lines":false,"show_percent":true,"show_series_name":true,"show_val":true},"show_blanks_as":"zero","x_axis":{"reverse_order":true},"y_axis":{"maximum":7.5,"minimum":0.5}}`)
 //        // Save xlsx file by the given path.
 //        err := xlsx.SaveAs("./Book1.xlsx")
 //        if err != nil {
@@ -351,6 +355,8 @@ func parseFormatChartSet(formatSet string) *formatChart {
 // maximum: Specifies that the fixed maximum, 0 is auto. The maximum property is optional. The default value is auto.
 // minimum: Specifies that the fixed minimum, 0 is auto. The minimum property is optional. The default value is auto.
 //
+// Set chart size by dimension property. The dimension property is optional. The default width is 480, and height is 290.
+//
 func (f *File) AddChart(sheet, cell, format string) {
 	formatSet := parseFormatChartSet(format)
 	// Read sheet data.
@@ -361,7 +367,7 @@ func (f *File) AddChart(sheet, cell, format string) {
 	drawingXML := "xl/drawings/drawing" + strconv.Itoa(drawingID) + ".xml"
 	drawingID, drawingXML = f.prepareDrawing(xlsx, drawingID, sheet, drawingXML)
 	drawingRID := f.addDrawingRelationships(drawingID, SourceRelationshipChart, "../charts/chart"+strconv.Itoa(chartID)+".xml", "")
-	f.addDrawingChart(sheet, drawingXML, cell, 480, 290, drawingRID, &formatSet.Format)
+	f.addDrawingChart(sheet, drawingXML, cell, formatSet.Dimension.Width, formatSet.Dimension.Height, drawingRID, &formatSet.Format)
 	f.addChart(formatSet)
 	f.addContentTypePart(chartID, "chart")
 	f.addContentTypePart(drawingID, "drawings")
